@@ -1,0 +1,25 @@
+[package]
+name = "curia"
+version = "0.1.0"
+edition = "2024"
+rust-version = "1.97.1"
+license = "MIT OR Apache-2.0"
+description = "Structured logging with a sink pipeline and a tracing bridge"
+autotests = false
+
+[dependencies]
+serde = { version = "^1", features = ["derive"] }
+serde_json = { version = "^1" }
+chrono = { version = "^0.4", features = ["serde"] }
+thiserror = { version = "^2" }
+tracing = { version = "^0.1" }
+tracing-core = { version = "^0.1" }
+tracing-subscriber = { version = "^0.3", default-features = false, features = [
+  "registry",
+  "std",
+] }
+tracing-log = { version = "^0.2" }
+
+[[test]]
+name = "lib"
+path = "tests/lib.rs"

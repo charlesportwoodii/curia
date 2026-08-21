@@ -1,0 +1,26 @@
+[tools]
+rust = "1.97.1"
+
+# No task sets `shell`. The bvc repo names pwsh per task because it is
+# Windows-dev-first; this crate runs a three-OS CI matrix, and a task pinned to
+# pwsh is unrunnable on the Linux and macOS legs.
+
+[tasks.fmt]
+description = "Format the crate"
+run = "cargo fmt --all"
+
+[tasks.fmt-check]
+description = "Fail when formatting is not applied. The direction CI runs"
+run = "cargo fmt --all -- --check"
+
+[tasks.lint]
+description = "Clippy with warnings denied"
+run = "cargo clippy --all-targets -- -D warnings"
+
+[tasks.test]
+description = "Run the aggregator test target"
+run = "cargo test"
+
+[tasks.check]
+description = "Everything CI runs: formatting, lints, tests"
+depends = ["fmt-check", "lint", "test"]
