@@ -143,3 +143,7 @@ Everything runs through mise.
 Tests live in a `tests/` tree mirroring `src/`, behind one aggregator target
 declared in `Cargo.toml`. `autotests = false` is required, or Cargo turns every
 top-level file in `tests/` into its own binary.
+
+## License
+
+BSD 3-Clause. See [LICENSE](LICENSE).
