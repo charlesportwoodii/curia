@@ -1,3 +1,9 @@
+mod console;
+mod file;
+
+pub use console::ConsoleSink;
+pub use file::FileSink;
+
 use crate::{Level, LogEvent};
 
 pub trait Sink: Send + Sync {

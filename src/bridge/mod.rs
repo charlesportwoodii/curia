@@ -4,7 +4,7 @@ use tracing_core::{Event, Level as TracingLevel, Subscriber};
 use tracing_subscriber::layer::{Context, Layer};
 use tracing_subscriber::registry::LookupSpan;
 
-use crate::{Fields, InstallError, Level, LogEvent, Logger, Sink};
+use crate::{Fields, Filter, InstallError, Level, LogEvent, Logger, Sink, Threshold};
 
 use visitor::FieldVisitor;
 
@@ -19,8 +19,7 @@ pub struct TracingBridge {
     // design. Replaces what tauri-plugin-log's `.level()` / `.level_for()` did
     // before this pipeline existed; without it every dependency's debug output
     // reaches every sink.
-    max_level: Level,
-    target_levels: Vec<(String, Level)>,
+    filter: Filter,
 }
 
 impl TracingBridge {
@@ -28,34 +27,29 @@ impl TracingBridge {
     pub fn to_global() -> Self {
         Self {
             target: BridgeTarget::Global,
-            max_level: Level::Trace,
-            target_levels: Vec::new(),
+            filter: Filter::default(),
         }
     }
 
     pub fn with_max_level(mut self, level: Level) -> Self {
-        self.max_level = level;
+        self.filter.set_global(Threshold::At(level));
+        self
+    }
+
+    pub fn with_filter(mut self, filter: Filter) -> Self {
+        self.filter = filter;
         self
     }
 
     // Prefix match, longest first at lookup, so a specific module can override
     // a broad crate rule.
     pub fn with_target_level(mut self, prefix: impl Into<String>, level: Level) -> Self {
-        self.target_levels.push((prefix.into(), level));
-        self.target_levels
-            .sort_by_key(|(prefix, _)| std::cmp::Reverse(prefix.len()));
+        self.filter.add_target(prefix, Threshold::At(level));
         self
     }
 
     fn admits(&self, target: &str, level: Level) -> bool {
-        let ceiling = self
-            .target_levels
-            .iter()
-            .find(|(prefix, _)| target.starts_with(prefix.as_str()))
-            .map(|(_, level)| *level)
-            .unwrap_or(self.max_level);
-
-        level <= ceiling
+        self.filter.admits(target, level)
     }
 
     // Emits into one sink directly, bypassing the process-global dispatch so a
@@ -63,8 +57,7 @@ impl TracingBridge {
     pub fn new(sink: impl Sink + 'static) -> Self {
         Self {
             target: BridgeTarget::Sink(Box::new(sink)),
-            max_level: Level::Trace,
-            target_levels: Vec::new(),
+            filter: Filter::default(),
         }
     }
 
