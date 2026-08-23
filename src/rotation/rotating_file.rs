@@ -11,7 +11,7 @@ use std::path::{Path, PathBuf};
 
 use super::naming::{Archive, Stamp};
 use super::policy::{ActiveFileFate, Policy, WriteAction};
-use crate::{SinkError, FileOpenStrategy, RotationStrategy, TimezoneStrategy};
+use crate::{FileOpenStrategy, RotationStrategy, SinkError, TimezoneStrategy};
 
 /// A log file that archives itself once it reaches a size limit.
 ///

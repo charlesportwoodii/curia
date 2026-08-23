@@ -132,4 +132,3 @@ fn a_format_call_can_still_carry_fields_through_the_block_arm() {
     let event = captured("capture failed: device gone");
     assert_eq!(event.fields.get("retry").unwrap(), &serde_json::json!(true));
 }
-

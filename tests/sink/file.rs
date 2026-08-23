@@ -1,9 +1,9 @@
 use std::sync::Arc;
 
-use curia::{Fields, Level, LogEvent, Sink};
 use curia::{
     DEFAULT_FILE_OPEN_STRATEGY, DEFAULT_ROTATION_STRATEGY, DEFAULT_TIMEZONE_STRATEGY, FileSink,
 };
+use curia::{Fields, Level, LogEvent, Sink};
 
 fn event(level: Level, message: &str) -> LogEvent {
     LogEvent {
