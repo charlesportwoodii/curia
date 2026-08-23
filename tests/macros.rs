@@ -68,24 +68,10 @@ fn inline_block_form_accepts_string_keys_and_nested_values() {
 }
 
 #[test]
-fn expression_form_flattens_a_serializable_value() {
-    sink();
-    let payload = serde_json::json!({ "seq": 7, "transport": "quic" });
-    curia::debug!("expression fields", payload);
-
-    let event = captured("expression fields");
-    assert_eq!(event.fields.get("seq").unwrap(), &serde_json::json!(7));
-    assert_eq!(
-        event.fields.get("transport").unwrap(),
-        &serde_json::json!("quic")
-    );
-}
-
-#[test]
-fn empty_block_form_is_the_format_escape_hatch() {
+fn a_preformatted_message_needs_no_trailing_block() {
     sink();
     let cause = std::io::Error::other("device gone");
-    curia::warn!(format!("capture failed: {cause:?}"), {});
+    curia::warn!(format!("capture failed: {cause:?}"));
 
     let event = captured(&format!("capture failed: {cause:?}"));
     assert_eq!(event.level, Level::Warn);
@@ -102,4 +88,47 @@ fn call_site_metadata_is_recorded() {
     assert_eq!(event.target, "lib::macros");
     assert!(event.file.unwrap().ends_with("macros.rs"));
     assert!(event.line.unwrap() > 0);
+}
+
+#[test]
+fn a_format_string_with_one_argument_becomes_the_message() {
+    sink();
+    let dsn = "mysql://user@host/db";
+    curia::info!("Database: {}", dsn);
+
+    let event = captured("Database: mysql://user@host/db");
+    assert_eq!(event.level, Level::Info);
+    assert!(event.fields.is_empty());
+}
+
+#[test]
+fn a_format_string_with_several_arguments_becomes_the_message() {
+    sink();
+    curia::warn!("token exchange failed ({}): {}", 403, "denied");
+
+    let event = captured("token exchange failed (403): denied");
+    assert_eq!(event.level, Level::Warn);
+    assert!(event.fields.is_empty());
+}
+
+#[test]
+fn a_brace_block_still_reaches_the_fields_arm() {
+    sink();
+    curia::warn!("format arm must not steal the block", { device_host: "asio" });
+
+    let event = captured("format arm must not steal the block");
+    assert_eq!(
+        event.fields.get("device_host").unwrap(),
+        &serde_json::json!("asio")
+    );
+}
+
+#[test]
+fn a_format_call_can_still_carry_fields_through_the_block_arm() {
+    sink();
+    let cause = "device gone";
+    curia::warn!(format!("capture failed: {cause}"), { retry: true });
+
+    let event = captured("capture failed: device gone");
+    assert_eq!(event.fields.get("retry").unwrap(), &serde_json::json!(true));
 }

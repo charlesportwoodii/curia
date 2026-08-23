@@ -27,8 +27,8 @@ macro_rules! __emit {
     };
 }
 
-// The block rule must precede the expression rule, or `{}` and `{ k: v }` are
-// both swallowed as block expressions.
+// The block rule must precede the format rule, or `{}` and `{ k: v }` are both
+// swallowed as a format argument.
 #[macro_export]
 #[doc(hidden)]
 macro_rules! __log {
@@ -42,8 +42,8 @@ macro_rules! __log {
         )*
         $crate::__emit!($level, $msg, fields)
     }};
-    ($level:expr, $msg:expr, $fields:expr) => {
-        $crate::__emit!($level, $msg, $crate::Fields::from_serializable($fields))
+    ($level:expr, $fmt:literal, $($arg:expr),+ $(,)?) => {
+        $crate::__emit!($level, ::std::format!($fmt, $($arg),+), $crate::Fields::new())
     };
 }
 

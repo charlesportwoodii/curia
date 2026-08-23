@@ -1,15 +1,24 @@
 use std::panic::{AssertUnwindSafe, catch_unwind};
 use std::sync::OnceLock;
 
-use crate::{InstallError, LogEvent, Sink};
+use crate::{Filter, InstallError, LogEvent, Sink};
 
 pub struct Dispatcher<S: Sink> {
     sinks: Vec<S>,
+    filter: Filter,
 }
 
 impl<S: Sink> Dispatcher<S> {
     pub fn new(sinks: Vec<S>) -> Self {
-        Self { sinks }
+        Self {
+            sinks,
+            filter: Filter::default(),
+        }
+    }
+
+    pub fn with_filter(mut self, filter: Filter) -> Self {
+        self.filter = filter;
+        self
     }
 }
 
@@ -19,6 +28,10 @@ pub trait Dispatch: Send + Sync {
 
 impl<S: Sink> Dispatch for Dispatcher<S> {
     fn dispatch(&self, event: &LogEvent) {
+        if !self.filter.admits(&event.target, event.level) {
+            return;
+        }
+
         for sink in &self.sinks {
             if event.level <= sink.level() {
                 // A sink that panics must not take the others down with it, nor
