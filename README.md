@@ -37,6 +37,19 @@ curia::error!("decode failed", {
 A value that fails to serialize is stored as `<unserializable: ...>` rather than
 dropped. A logging call never fails and never returns an error.
 
+### A refused level costs one atomic load
+
+Every macro asks `Logger::enabled` before it builds anything. When the installed
+dispatcher would deliver the level nowhere — no sink registered that verbose, or a
+filter directive refuses it for this module — the message, the fields, the target
+and the timestamp are never built. A `debug!` in a per-packet loop is free while
+debug is off.
+
+The arguments are not evaluated either, so a logging call must not be relied on for
+a side effect.
+
+Before `Logger::install`, every level is refused.
+
 ### Format arguments are deliberately unsupported
 
 There is no `warn!("failed {}", e)` form. An interpolated message is exactly what
@@ -143,6 +156,9 @@ Everything runs through mise.
 Tests live in a `tests/` tree mirroring `src/`, behind one aggregator target
 declared in `Cargo.toml`. `autotests = false` is required, or Cargo turns every
 top-level file in `tests/` into its own binary.
+
+`tests/gate.rs` is the one other target. It needs a process-global logger installed
+at a level that refuses something, and `lib` has already claimed the only install.
 
 ## License
 
