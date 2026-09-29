@@ -62,6 +62,17 @@ impl Filter {
             .admits(level)
     }
 
+    // The most verbose threshold any target can reach: the global one or the widest
+    // per-target override, whichever admits more. A level past this is refused for
+    // every target, so it can be decided without knowing the target.
+    pub fn widest(&self) -> Threshold {
+        self.targets
+            .iter()
+            .fold(self.global, |widest, (_, threshold)| {
+                widest.widest(*threshold)
+            })
+    }
+
     // A dropped directive reads as a filter that does not work, so it is named
     // rather than swallowed. stderr, because a logger cannot log its own setup.
     fn report(directive: &str) {

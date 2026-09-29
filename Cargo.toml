@@ -1,6 +1,6 @@
 [package]
 name = "curia"
-version = "0.2.0"
+version = "0.2.1"
 edition = "2024"
 rust-version = "1.97.1"
 license = "BSD-3-Clause"
@@ -32,3 +32,9 @@ oslog = { version = "0.2", default-features = false }
 [[test]]
 name = "lib"
 path = "tests/lib.rs"
+
+# Its own binary because it installs its own process-global logger, at a level that
+# refuses something. `lib` has already claimed the one install at Trace.
+[[test]]
+name = "gate"
+path = "tests/gate.rs"

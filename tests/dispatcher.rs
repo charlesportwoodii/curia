@@ -1,4 +1,4 @@
-use curia::{Dispatch, Dispatcher, Fields, Level, Logger};
+use curia::{Dispatch, Dispatcher, Fields, Filter, Level, Logger, Threshold};
 
 use crate::support::{PanicSink, TestSink, TestSinkType, Unserializable, event};
 
@@ -43,6 +43,49 @@ fn a_panicking_sink_does_not_stop_the_others() {
 #[test]
 fn emit_before_install_is_a_no_op() {
     Logger::emit(event(Level::Error, "nobody is listening"));
+}
+
+#[test]
+fn the_max_threshold_is_capped_by_the_most_verbose_sink() {
+    let dispatcher = Dispatcher::new(vec![
+        TestSinkType::Capture(TestSink::new(Level::Warn)),
+        TestSinkType::Capture(TestSink::new(Level::Info)),
+    ]);
+
+    assert_eq!(dispatcher.max_threshold(), Threshold::At(Level::Info));
+}
+
+#[test]
+fn the_max_threshold_is_capped_by_the_filter_when_the_sinks_are_more_verbose() {
+    let dispatcher = Dispatcher::new(vec![TestSinkType::Capture(TestSink::new(Level::Trace))])
+        .with_filter(Filter::from_directives("warn"));
+
+    assert_eq!(dispatcher.max_threshold(), Threshold::At(Level::Warn));
+}
+
+#[test]
+fn a_dispatcher_without_sinks_admits_nothing() {
+    let dispatcher: Dispatcher<TestSinkType> = Dispatcher::new(Vec::new());
+
+    assert_eq!(dispatcher.max_threshold(), Threshold::Off);
+    assert!(!dispatcher.enabled("anything", Level::Error));
+}
+
+#[test]
+fn enabled_honours_a_per_target_override() {
+    let dispatcher = Dispatcher::new(vec![TestSinkType::Capture(TestSink::new(Level::Trace))])
+        .with_filter(Filter::from_directives("info,bvc::route=debug"));
+
+    assert!(dispatcher.enabled("bvc::route::fanout", Level::Debug));
+    assert!(!dispatcher.enabled("bvc::http", Level::Debug));
+}
+
+#[test]
+fn enabled_refuses_a_level_no_sink_accepts() {
+    let dispatcher = Dispatcher::new(vec![TestSinkType::Capture(TestSink::new(Level::Info))]);
+
+    assert!(dispatcher.enabled("anything", Level::Info));
+    assert!(!dispatcher.enabled("anything", Level::Debug));
 }
 
 #[test]

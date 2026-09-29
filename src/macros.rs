@@ -27,23 +27,39 @@ macro_rules! __emit {
     };
 }
 
+// Every arm asks `Logger::enabled` first and builds nothing when the answer is no: not
+// the message, not the fields, not the target or timestamp. A refused call therefore
+// never evaluates its arguments, so an argument must not be relied on for a side effect.
+//
 // The block rule must precede the format rule, or `{}` and `{ k: v }` are both
 // swallowed as a format argument.
 #[macro_export]
 #[doc(hidden)]
 macro_rules! __log {
-    ($level:expr, $msg:expr) => {
-        $crate::__emit!($level, $msg, $crate::Fields::new())
-    };
-    ($level:expr, $msg:expr, { $($key:tt : $value:expr),* $(,)? }) => {{
-        let mut fields = $crate::Fields::new();
-        $(
-            fields.insert($crate::field_key!($key), $value);
-        )*
-        $crate::__emit!($level, $msg, fields)
+    ($level:expr, $msg:expr) => {{
+        let level = $level;
+        if $crate::Logger::enabled(level, ::core::module_path!()) {
+            $crate::__emit!(level, $msg, $crate::Fields::new())
+        }
     }};
-    ($level:expr, $fmt:literal, $($arg:expr),+ $(,)?) => {
-        $crate::__emit!($level, ::std::format!($fmt, $($arg),+), $crate::Fields::new())
+    ($level:expr, $msg:expr, { $($key:tt : $value:expr),* $(,)? }) => {{
+        let level = $level;
+        if $crate::Logger::enabled(level, ::core::module_path!()) {
+            let mut fields = $crate::Fields::new();
+            $(
+                fields.insert($crate::field_key!($key), $value);
+            )*
+            $crate::__emit!(level, $msg, fields)
+        }
+    }};
+    ($level:expr, $fmt:literal, $($arg:expr),+ $(,)?) => {{
+        let level = $level;
+        if $crate::Logger::enabled(level, ::core::module_path!()) {
+            $crate::__emit!(level, ::std::format!($fmt, $($arg),+), $crate::Fields::new())
+        }
+    }};
+    ($level:expr, $msg:expr, $fields:expr) => {
+        $crate::__emit!($level, $msg, $crate::Fields::from_serializable($fields))
     };
 }
 

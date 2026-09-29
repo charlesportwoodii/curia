@@ -22,4 +22,9 @@ impl Level {
             Self::Trace => "trace",
         }
     }
+
+    // 0 for Error through 4 for Trace, taken from the variant order above.
+    pub(crate) fn rank(&self) -> u8 {
+        *self as u8
+    }
 }
