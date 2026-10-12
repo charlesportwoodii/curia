@@ -1,6 +1,7 @@
 mod visitor;
 
-use tracing_core::{Event, Level as TracingLevel, Subscriber};
+use tracing_core::subscriber::Interest;
+use tracing_core::{Event, Level as TracingLevel, LevelFilter, Metadata, Subscriber};
 use tracing_subscriber::layer::{Context, Layer};
 use tracing_subscriber::registry::LookupSpan;
 
@@ -52,6 +53,33 @@ impl TracingBridge {
         self.filter.admits(target, level)
     }
 
+    // tracing-log routes every log::Record through callsites targeted at the literal
+    // "log", with the real target in a field. Such a callsite can only be judged by
+    // level; its event is judged by target once the field is read.
+    fn is_log_origin(metadata: &Metadata<'_>) -> bool {
+        metadata.target() == "log"
+    }
+
+    fn admits_callsite(&self, metadata: &Metadata<'_>) -> bool {
+        let level = Self::level_from(metadata.level());
+        if Self::is_log_origin(metadata) {
+            self.filter.widest().admits(level)
+        } else {
+            self.admits(metadata.target(), level)
+        }
+    }
+
+    fn level_hint(threshold: Threshold) -> LevelFilter {
+        match threshold {
+            Threshold::Off => LevelFilter::OFF,
+            Threshold::At(Level::Error) => LevelFilter::ERROR,
+            Threshold::At(Level::Warn) => LevelFilter::WARN,
+            Threshold::At(Level::Info) => LevelFilter::INFO,
+            Threshold::At(Level::Debug) => LevelFilter::DEBUG,
+            Threshold::At(Level::Trace) => LevelFilter::TRACE,
+        }
+    }
+
     // Emits into one sink directly, bypassing the process-global dispatch so a
     // test can assert without claiming the OnceLock.
     pub fn new(sink: impl Sink + 'static) -> Self {
@@ -92,6 +120,26 @@ impl<S> Layer<S> for TracingBridge
 where
     S: Subscriber + for<'a> LookupSpan<'a>,
 {
+    // Without these three, tracing treats every callsite in every dependency as
+    // enabled at Trace: a refused event is still built, its span scope walked and its
+    // fields formatted before `on_event` throws it away. The filter is fixed once the
+    // bridge is layered, so the per-callsite answer can be cached.
+    fn register_callsite(&self, metadata: &'static Metadata<'static>) -> Interest {
+        if self.admits_callsite(metadata) {
+            Interest::always()
+        } else {
+            Interest::never()
+        }
+    }
+
+    fn enabled(&self, metadata: &Metadata<'_>, _ctx: Context<'_, S>) -> bool {
+        self.admits_callsite(metadata)
+    }
+
+    fn max_level_hint(&self) -> Option<LevelFilter> {
+        Some(Self::level_hint(self.filter.widest()))
+    }
+
     fn on_new_span(
         &self,
         attrs: &tracing_core::span::Attributes<'_>,
@@ -107,6 +155,15 @@ where
     }
 
     fn on_event(&self, event: &Event<'_>, ctx: Context<'_, S>) {
+        // Refuse before building anything. Only a log-origin event has to be built
+        // first, because its real target is one of its fields.
+        let metadata = event.metadata();
+        if !Self::is_log_origin(metadata)
+            && !self.admits(metadata.target(), Self::level_from(metadata.level()))
+        {
+            return;
+        }
+
         let mut fields = Fields::new();
 
         // Outermost span first, so an inner scope overwrites an outer one
