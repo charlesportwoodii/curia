@@ -1,4 +1,10 @@
+use std::fmt;
+use std::sync::Arc;
+use std::sync::atomic::{AtomicUsize, Ordering};
+
+use tracing::level_filters::LevelFilter;
 use tracing::subscriber::DefaultGuard;
+use tracing_subscriber::Layer;
 use tracing_subscriber::prelude::*;
 
 use curia::{Level, LogEvent, TracingBridge};
@@ -169,4 +175,96 @@ fn the_max_level_floors_everything_without_an_override() {
     tracing::event!(target: "anything", tracing::Level::INFO, "loud enough");
 
     assert_eq!(sink.messages(), vec!["loud enough"]);
+}
+
+// A field whose Debug rendering is observable, so a test can see whether an event or
+// span was built at all rather than only whether it reached a sink.
+struct Rendered(Arc<AtomicUsize>);
+
+impl fmt::Debug for Rendered {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        self.0.fetch_add(1, Ordering::SeqCst);
+        f.write_str("rendered")
+    }
+}
+
+// A dependency instrumented per packet (s2n-quic's event subscriber emits several
+// DEBUG events per datagram) must cost nothing when the bridge refuses its level.
+#[test]
+fn a_refused_event_is_never_built() {
+    let sink = TestSink::new(Level::Trace);
+    let renders = Arc::new(AtomicUsize::new(0));
+    let _guard = tracing::subscriber::set_default(
+        tracing_subscriber::registry()
+            .with(TracingBridge::new(sink.clone()).with_max_level(Level::Info)),
+    );
+
+    let field = Rendered(renders.clone());
+    tracing::debug!(target: "s2n_quic::event", packet = ?field, "packet_sent");
+
+    assert!(sink.messages().is_empty());
+    assert_eq!(
+        renders.load(Ordering::SeqCst),
+        0,
+        "refused event fields were formatted"
+    );
+}
+
+#[test]
+fn a_refused_span_is_never_recorded() {
+    let sink = TestSink::new(Level::Trace);
+    let renders = Arc::new(AtomicUsize::new(0));
+    let _guard = tracing::subscriber::set_default(
+        tracing_subscriber::registry()
+            .with(TracingBridge::new(sink.clone()).with_max_level(Level::Info)),
+    );
+
+    let field = Rendered(renders.clone());
+    let _span = tracing::debug_span!(target: "s2n_quic::event", "conn", id = ?field);
+
+    assert_eq!(
+        renders.load(Ordering::SeqCst),
+        0,
+        "refused span fields were recorded"
+    );
+}
+
+// Every log-origin event shares the callsite target "log", so its admission cannot be
+// decided per callsite; it must still be judged by the target it carries.
+#[test]
+fn a_log_origin_event_is_judged_by_its_restored_target() {
+    let sink = TestSink::new(Level::Trace);
+    let _guard = tracing::subscriber::set_default(
+        tracing_subscriber::registry().with(
+            TracingBridge::new(sink.clone())
+                .with_max_level(Level::Info)
+                .with_target_level("bedrock_client", Level::Debug),
+        ),
+    );
+
+    tracing::event!(
+        target: "log",
+        tracing::Level::DEBUG,
+        log.target = "bedrock_client::session",
+        "admitted by override"
+    );
+    tracing::event!(
+        target: "log",
+        tracing::Level::DEBUG,
+        log.target = "h2::codec",
+        "refused by floor"
+    );
+
+    assert_eq!(sink.messages(), vec!["admitted by override"]);
+}
+
+#[test]
+fn the_level_hint_is_the_widest_threshold() {
+    let bridge = TracingBridge::to_global()
+        .with_max_level(Level::Warn)
+        .with_target_level("bedrock_client", Level::Debug);
+
+    let hint = Layer::<tracing_subscriber::Registry>::max_level_hint(&bridge);
+
+    assert_eq!(hint, Some(LevelFilter::DEBUG));
 }
